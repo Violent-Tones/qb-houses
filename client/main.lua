@@ -19,7 +19,6 @@ local POIOffsets = nil
 local entering = false
 local data = nil
 local CurrentHouse = nil
-local RamsDone = 0
 local keyholderMenu = {}
 local keyholderOptions = {}
 local fetchingHouseKeys = false
@@ -529,6 +528,8 @@ local function SetClosestHouse()
             end, ClosestHouse)
         end
     end
+    
+    if ClosestHouse and next(Config.Houses[ClosestHouse].garage) == nil then return end
     TriggerEvent('qb-garages:client:setHouseGarage', ClosestHouse, HasHouseKey)
 end
 
@@ -1007,14 +1008,8 @@ local function openHouseStash()
     if not CurrentHouse then return end
     local stashLoc = vector3(stashLocation.x, stashLocation.y, stashLocation.z)
     if CheckDistance(stashLoc, 1.5) then
-        local houseTier = tonumber(Config.Houses[CurrentHouse].tier)
-        if Config.StashWeights[houseTier] and tonumber(Config.StashWeights[houseTier].maxweight) and tonumber(Config.StashWeights[houseTier].slots) then
-            TriggerServerEvent('inventory:server:OpenInventory', 'stash', CurrentHouse, Config.StashWeights[houseTier])
-        else
-            TriggerServerEvent('inventory:server:OpenInventory', 'stash', CurrentHouse)
-        end
-        TriggerEvent('inventory:client:SetCurrentStash', CurrentHouse)
         TriggerServerEvent('InteractSound_SV:PlayOnSource', 'StashOpen', 0.4)
+        TriggerServerEvent('qb-houses:server:openStash', CurrentHouse)
     end
 end
 
@@ -1090,8 +1085,9 @@ AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
     TriggerEvent('qb-houses:client:setupHouseBlips')
     if Config.UnownedBlips then TriggerEvent('qb-houses:client:setupHouseBlips2') end
     Wait(100)
-    TriggerEvent('qb-garages:client:setHouseGarage', ClosestHouse, HasHouseKey)
     TriggerServerEvent('qb-houses:server:setHouses')
+    if ClosestHouse and next(Config.Houses[ClosestHouse].garage) == nil then return end
+    TriggerEvent('qb-garages:client:setHouseGarage', ClosestHouse, HasHouseKey)
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
@@ -1377,7 +1373,6 @@ end)
 RegisterNetEvent('qb-houses:client:HomeInvasion', function()
     local ped = PlayerPedId()
     local pos = GetEntityCoords(ped)
-    local Skillbar = exports['qb-skillbar']:GetSkillbarObject()
     if ClosestHouse ~= nil then
         QBCore.Functions.TriggerCallback('police:server:IsPoliceForcePresent', function(IsPresent)
             if IsPresent then
@@ -1388,33 +1383,18 @@ RegisterNetEvent('qb-houses:client:HomeInvasion', function()
                 if dist < 1 then
                     if Config.Houses[ClosestHouse].locked then
                         if not Config.Houses[ClosestHouse].IsRaming then
-                            DoRamAnimation(true)
-                            Skillbar.Start({
-                                duration = math.random(5000, 10000),
-                                pos = math.random(10, 30),
-                                width = math.random(10, 20),
-                            }, function()
-                                if RamsDone + 1 >= Config.RamsNeeded then
-                                    TriggerServerEvent('qb-houses:server:lockHouse', false, ClosestHouse)
-                                    QBCore.Functions.Notify(Lang:t('success.home_invasion'), 'success')
-                                    TriggerServerEvent('qb-houses:server:SetHouseRammed', true, ClosestHouse)
-                                    TriggerServerEvent('qb-houses:server:SetRamState', false, ClosestHouse)
-                                    DoRamAnimation(false)
-                                else
-                                    DoRamAnimation(true)
-                                    Skillbar.Repeat({
-                                        duration = math.random(500, 1000),
-                                        pos = math.random(10, 30),
-                                        width = math.random(5, 12),
-                                    })
-                                    RamsDone = RamsDone + 1
-                                end
-                            end, function()
-                                RamsDone = 0
+                            local success = exports['qb-minigames']:Skillbar('medium') -- calling like this will just change difficulty and still use 1234
+                            if success then
+                                DoRamAnimation(true)
+                                TriggerServerEvent('qb-houses:server:lockHouse', false, ClosestHouse)
+                                QBCore.Functions.Notify(Lang:t('success.home_invasion'), 'success')
+                                TriggerServerEvent('qb-houses:server:SetHouseRammed', true, ClosestHouse)
+                                TriggerServerEvent('qb-houses:server:SetRamState', false, ClosestHouse)
+                            else
                                 TriggerServerEvent('qb-houses:server:SetRamState', false, ClosestHouse)
                                 QBCore.Functions.Notify(Lang:t('error.failed_invasion'), 'error')
-                                DoRamAnimation(false)
-                            end)
+                            end
+                            DoRamAnimation(false)
                             TriggerServerEvent('qb-houses:server:SetRamState', true, ClosestHouse)
                         else
                             QBCore.Functions.Notify(Lang:t('error.inprogress_invasion'), 'error')
@@ -1546,7 +1526,9 @@ CreateThread(function()
         TriggerEvent('qb-houses:client:setupHouseBlips2')
     end
     Wait(wait)
-    TriggerEvent('qb-garages:client:setHouseGarage', ClosestHouse, HasHouseKey)
+    if ClosestHouse and next(Config.Houses[ClosestHouse].garage) ~= nil then
+        TriggerEvent('qb-garages:client:setHouseGarage', ClosestHouse, HasHouseKey)
+    end
     TriggerServerEvent('qb-houses:server:setHouses')
 
     while true do
